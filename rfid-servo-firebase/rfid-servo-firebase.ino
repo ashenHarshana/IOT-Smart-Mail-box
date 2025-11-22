@@ -3,6 +3,8 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <ESP32Servo.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 // ---------------- WIFI -----------------
 #define WIFI_SSID "OPPO A78"
@@ -21,23 +23,25 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// ---------------- RFID -----------------
+// Time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800);
+
+//  RFID 
 #define SS_PIN 5
 #define RST_PIN 22
 MFRC522 rfid(SS_PIN, RST_PIN);
 
-// ---------------- SERVO -----------------
+//  SERVO 
 #define SERVO_PIN 13
 Servo myServo;
 
-// ---------------- VALID CARDS -----------------
+//  VALID CARDS 
 byte validCard1[4] = {0x83, 0x3B, 0xAA, 0xFC};
 byte validCard2[4] = {0x23, 0xAD, 0x03, 0xF7};
 
 // Door state
 bool doorOpen = false;
-
-// ---------------- FUNCTIONS -----------------
 
 bool compareUID(byte *a, byte *b) {
   for (int i = 0; i < 4; i++) {
@@ -46,12 +50,16 @@ bool compareUID(byte *a, byte *b) {
   return true;
 }
 
-void sendToFirebase(String uid, String status, String doorState) {
-  // Save log
-  Firebase.pushString(fbdo, "/doorLock", uid + " | " + status + " | Door: " + doorState);
+void sendToFirebase(String uid, String doorState) {
+  String timeStamp = getTimeStamp();
 
-  // Update door status
-  Firebase.setString(fbdo, "/doorStatus", doorState);
+  Firebase.setString(fbdo, "/doorStatus", "Door: " + doorState);
+
+  // Save log entry
+  Firebase.pushString(fbdo, "/logs",
+                      "UID: " + uid +  
+                      " | Door: " + doorState + 
+                      " | Time: " + timeStamp);
 }
 
 // ---------------- SETUP -----------------
@@ -87,7 +95,7 @@ void setup() {
 
   // ---------- SERVO ----------
   myServo.attach(SERVO_PIN);
-  myServo.write(0); // start closed
+  myServo.write(0); // start  door state closed
 
   Serial.println("System Ready - Scan your RFID card...");
 }
@@ -120,24 +128,38 @@ void loop() {
       myServo.write(180);
       doorOpen = true;
 
-      Serial.println("Access Granted - Door opened.");
-      sendToFirebase(uidString, "Access Granted", "open");
+      Serial.println(" Door opened");
+      sendToFirebase(uidString, "open");
     }
     else {
       myServo.write(0);
       doorOpen = false;
 
-      Serial.println("Access Granted - Door closed.");
-      sendToFirebase(uidString, "Access Granted", "closed");
+      Serial.println(" Door closed");
+      sendToFirebase(uidString, "closed");
     }
   }
 
   // ---- INVALID CARD ----
   else {
-    Serial.println("Access Denied!");
-    sendToFirebase(uidString, "Access Denied", "unchanged");
+    Serial.println("Access Denied! - Door closed");
+    sendToFirebase(uidString, "ReEnter correct KEY");
   }
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
+}
+
+// ----------- TIME FUNCTION -----------
+String getTimeStamp() {
+  timeClient.update();
+  unsigned long epochTime = timeClient.getEpochTime();
+
+  int hour = (epochTime % 86400L) / 3600;
+  int minute = (epochTime % 3600) / 60;
+  int second = epochTime % 60;
+
+  char buffer[20];
+  sprintf(buffer, "%02d:%02d:%02d", hour, minute, second);
+  return String(buffer);
 }
