@@ -4,65 +4,41 @@
 #include <MFRC522.h>
 #include <ESP32Servo.h>
 
-// ---------------- WIFI -----------------
+// WiFi configaration
 #define WIFI_SSID "OPPO A78"
 #define WIFI_PASSWORD "12345678"
 
-// ---------------- FIREBASE -----------------
 #define API_KEY "AIzaSyDCf1MiexBrF9hViJDh4nhiEQBhRUqPAkk"
 #define DATABASE_URL "test-2-ee62f-default-rtdb.asia-southeast1.firebasedatabase.app/"
-
-// Firebase Email/Password Login
 #define USER_EMAIL "ashenharshana02@gmail.com"
 #define USER_PASSWORD "Ashen@fdo10"
 
-// Firebase Objects
+// Pins
+#define DOOR_SENSOR_PIN 4
+
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// ---------------- RFID -----------------
-#define SS_PIN 5
-#define RST_PIN 22
-MFRC522 rfid(SS_PIN, RST_PIN);
-
-// ---------------- SERVO -----------------
-#define SERVO_PIN 13
+MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 Servo myServo;
 
-// ---------------- VALID CARDS -----------------
-byte validCard1[4] = {0x83, 0x3B, 0xAA, 0xFC};
-byte validCard2[4] = {0x23, 0xAD, 0x03, 0xF7};
+// State Variables
+int lastDoorState = -1;
+bool doorUnlocked = false;
+bool mailRetrievalDetected = false;
 
-// Door state
-bool doorOpen = false;
-
-// ---------------- FUNCTIONS -----------------
-
-bool compareUID(byte *a, byte *b) {
-  for (int i = 0; i < 4; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
-}
-
-void sendToFirebase(String uid, String status, String doorState) {
-  // Save log
-  Firebase.pushString(fbdo, "/doorLock", uid + " | " + status + " | Door: " + doorState);
-
-  // Update door status
-  Firebase.setString(fbdo, "/doorStatus", doorState);
-}
-
-// ---------------- SETUP -----------------
+// Timers
+unsigned long lastRemoteCheck = 0; 
 
 void setup() {
   Serial.begin(115200);
 
   SPI.begin();
   rfid.PCD_Init();
+  myServo.attach(SERVO_PIN);
+  myServo.write(0); 
 
-  // ---------- WIFI CONNECT ----------
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
 
@@ -74,7 +50,6 @@ void setup() {
   Serial.println("\nConnected with IP:");
   Serial.println(WiFi.localIP());
 
-  // ---------- FIREBASE CONFIG ----------
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
@@ -82,62 +57,38 @@ void setup() {
 
   Firebase.begin(&config, &auth);
   Firebase.setDoubleDigits(5);
+   Serial.println("Firebase Connected!");
 
-  Serial.println("Firebase Connected!");
+// Sync initial state
 
-  // ---------- SERVO ----------
-  myServo.attach(SERVO_PIN);
-  myServo.write(0); // start closed
+  Serial.println("System Active.");
 
-  Serial.println("System Ready - Scan your RFID card...");
 }
 
-// ---------------- LOOP -----------------
-
 void loop() {
-
-  if (!rfid.PICC_IsNewCardPresent()) return;
-  if (!rfid.PICC_ReadCardSerial()) return;
-
-  byte *uid = rfid.uid.uidByte;
-
-  // Convert UID to string
-  String uidString = "";
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    if (uid[i] < 0x10) uidString += "0";
-    uidString += String(uid[i], HEX);
-    if (i < rfid.uid.size - 1) uidString += " ";
-  }
-  uidString.toUpperCase();
-
-  Serial.print("Scanned UID: ");
-  Serial.println(uidString);
-
-  // ---- VALID CARD ----
-  if (compareUID(uid, validCard1) || compareUID(uid, validCard2)) {
-
-    if (!doorOpen) {
-      myServo.write(180);
-      doorOpen = true;
-
-      Serial.println("Access Granted - Door opened.");
-      sendToFirebase(uidString, "Access Granted", "open");
-    }
-    else {
-      myServo.write(0);
-      doorOpen = false;
-
-      Serial.println("Access Granted - Door closed.");
-      sendToFirebase(uidString, "Access Granted", "closed");
+  // 4. RFID ACCESS (With 3s Cooldown)
+  if (millis() - lastRFIDScan > 3000) { 
+    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+      byte *uid = rfid.uid.uidByte;
+      String uidString = "";
+      for (byte i = 0; i < rfid.uid.size; i++) {
+        if (uid[i] < 0x10) uidString += "0";
+        uidString += String(uid[i], HEX);
+        if (i < rfid.uid.size - 1) uidString += " ";
+      }
+      uidString.toUpperCase();
+      
+      if (compareUID(uid, validCard1) || compareUID(uid, validCard2)) {
+        if (!doorUnlocked) unlockDoor("RFID");
+        else lockDoor("RFID");
+        lastRFIDScan = millis(); 
+      } else {
+        Serial.println("Access Denied");
+        Firebase.pushString(fbdo, "/logs", "Denied: " + uidString);
+        lastRFIDScan = millis();
+      }
+      rfid.PICC_HaltA();
+      rfid.PCD_StopCrypto1();
     }
   }
-
-  // ---- INVALID CARD ----
-  else {
-    Serial.println("Access Denied!");
-    sendToFirebase(uidString, "Access Denied", "unchanged");
-  }
-
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
 }
