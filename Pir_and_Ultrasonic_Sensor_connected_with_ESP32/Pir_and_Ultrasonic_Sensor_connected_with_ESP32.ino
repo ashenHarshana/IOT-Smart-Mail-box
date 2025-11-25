@@ -1,85 +1,68 @@
 #include <WiFi.h>
+#include <FirebaseESP32.h>
 
-// ---------------- WIFI CONFIG ----------------
 #define WIFI_SSID "OPPO A78"
 #define WIFI_PASSWORD "12345678"
+#define API_KEY "AIzaSyDCf1MiexBrF9hViJDh4nhiEQBhRUqPAkk"
+#define DATABASE_URL "test-2-ee62f-default-rtdb.asia-southeast1.firebasedatabase.app/"
+#define USER_EMAIL "ashenharshana02@gmail.com"
+#define USER_PASSWORD "Ashen@fdo10"
 
-// PIR + Ultrasonic Pins
-const int PIR_PIN = 27;
-const int TRIG_PIN = 12;
-const int ECHO_PIN = 14;
-const float DISTANCE_THRESHOLD_CM = 5.0;
+#define PIR_PIN 27
+#define TRIG_PIN 12
+#define ECHO_PIN 14
+const float DISTANCE_THRESHOLD_CM = 10.0;
 
-int lastState = 0;
-unsigned long lastPrint = 0;
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+unsigned long lastAlert = 0;
+
+float measureDistanceCm() {
+  digitalWrite(TRIG_PIN, LOW); delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  unsigned long duration = pulseIn(ECHO_PIN, HIGH, 25000UL);
+  if (duration == 0) return 0;
+  return duration * 0.034 / 2;
+}
 
 void setup() {
   Serial.begin(115200);
-  
-  // Initialize sensors
   pinMode(PIR_PIN, INPUT);
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
-  
-  Serial.println("=== SENSOR DEBUG STARTED ===");
-  Serial.println("Waiting 30 seconds for PIR stabilization...");
-  
-  // PIR warm-up period
-  for(int i = 30; i > 0; i--) {
-    Serial.print(".");
-    delay(1000);
-  }
-  Serial.println("\nSensors ready! Starting monitoring...");
-  
-  
-}
 
-float measureDistanceCm() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-  
-  unsigned long duration = pulseIn(ECHO_PIN, HIGH, 60000UL);
-  
-  if (duration == 0) return -1;
-  
-  return duration * 0.034 / 2;
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) { delay(300); Serial.print("."); }
+  Serial.println("\nConnected.");
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  auth.user.email = USER_EMAIL;
+  auth.user.password = USER_PASSWORD;
+  Firebase.begin(&config, &auth);
+
+  Serial.println("Stabilizing PIR...");
+  delay(5000);
+  Serial.println("Amasha's System Ready.");
 }
 
 void loop() {
   int pirValue = digitalRead(PIR_PIN);
-  float distance = measureDistanceCm();
-  
-
-  if (millis() - lastPrint > 2000) {
-    Serial.print("PIR: ");
-    Serial.print(pirValue);
-    Serial.print(" | Distance: ");
-    Serial.print(distance);
-    Serial.println(" cm");
-    lastPrint = millis();
-  }
   
   if (pirValue == HIGH) {
-    if (distance > 0 && distance <= DISTANCE_THRESHOLD_CM) {
-      if (lastState != 1) {
-        Serial.println("✅ MOTION DETECTED IN RANGE!");
-        lastState = 1;
+    float dist = measureDistanceCm();
+    Serial.print("Motion! Dist: "); Serial.println(dist);
+
+    if (dist > 0 && dist <= DISTANCE_THRESHOLD_CM) {
+      if (millis() - lastAlert > 5000) {
+         Serial.println("🚨 INTRUDER!");
+         Firebase.setString(fbdo, "/security", "Intruder Detected!");
+         Firebase.pushString(fbdo, "/logs", "Security Alert!");
+         lastAlert = millis();
       }
-    } else {
-      if (lastState != 0) {
-        Serial.println("⚠️ Motion detected but OUT OF RANGE");
-        lastState = 0;
-      }
-    }
-  } else {
-    if (lastState != 0) {
-      Serial.println("❌ No motion detected");
-      lastState = 0;
     }
   }
-  
-  delay(200);
+  delay(500);
 }
