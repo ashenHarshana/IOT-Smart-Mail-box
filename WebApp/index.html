@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Mailbox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .card { transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); }
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-track { background: #f1f1f1; }
+        .log-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .alert-active { animation: pulse-red 2s infinite; border-color: #ef4444; }
+        .shake { animation: shake 0.5s; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body class="text-slate-800 bg-slate-900 min-h-screen flex flex-col">
+
+    <!-- ================= LOGIN VIEW ================= -->
+    <div id="login-view" class="flex-grow flex items-center justify-center p-4 hidden">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+            <div class="text-center mb-8">
+                <div class="bg-blue-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <i class="fa-solid fa-envelope-open-text text-3xl text-white"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">SmartBox IoT</h2>
+                <p class="text-slate-500 text-sm">Sign in to access dashboard</p>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-envelope text-slate-400"></i>
+                        </div>
+                        <input type="email" id="email" class="pl-10 w-full p-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" placeholder="name@example.com" required>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa-solid fa-lock text-slate-400"></i>
+                        </div>
+                        <input type="password" id="password" class="pl-10 w-full p-2.5 bg-slate-50 border border-slate-300 text-slate-900 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" placeholder="••••••••" required>
+                    </div>
+                </div>
+
+                <div id="error-msg" class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <span id="error-text">Invalid credentials</span>
+                </div>
+
+                <button type="submit" id="submit-btn" class="w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-all flex items-center justify-center gap-2">
+                    <span>Sign In</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+            
+            <div class="mt-6 text-center text-xs text-slate-400">
+                Protected by Firebase Authentication
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= DASHBOARD VIEW ================= -->
+    <div id="dashboard-view" class="hidden flex-col w-full bg-[#f3f4f6] min-h-screen">
+        <nav class="bg-slate-900 text-white shadow-lg">
+            <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-500 p-2 rounded-lg"><i class="fa-solid fa-envelope-open-text text-xl"></i></div>
+                    <span class="text-xl font-bold tracking-wide">SmartBox IoT</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="text-sm text-slate-400 hidden sm:block">
+                        <i class="fa-solid fa-circle text-green-500 text-xs mr-1" id="connection-dot"></i> <span id="connection-text">Connecting...</span>
+                    </div>
+                    <button id="logout-btn" class="bg-slate-800 hover:bg-red-600 text-white text-xs px-3 py-2 rounded transition-colors ml-2 border border-slate-700">
+                        <i class="fa-solid fa-right-from-bracket mr-1"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mx-auto px-6 py-8">
+            <div id="security-alert" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm flex justify-between items-center">
+                <div><p class="font-bold"><i class="fa-solid fa-triangle-exclamation mr-2"></i> SECURITY ALERT</p><p id="security-msg">Intruder detected near mailbox.</p></div>
+                <button onclick="dismissAlert()" class="text-red-700 hover:text-red-900"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <!-- STATS GRID -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="card bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+                    <div class="flex justify-between items-start">
+                        <div><p class="text-slate-500 text-sm font-semibold uppercase">Total Mail</p><h2 class="text-4xl font-bold text-slate-800 mt-2" id="mail-count">0</h2></div>
+                        <div class="bg-blue-50 p-3 rounded-full text-blue-500"><i class="fa-solid fa-envelope text-2xl"></i></div>
+                    </div>
+                    <p class="text-sm text-slate-400 mt-4" id="mail-status-text">Empty</p>
+                </div>
+                <div class="card bg-white rounded-xl shadow-sm p-6 border-l-4 border-emerald-500" id="lock-card">
+                    <div class="flex justify-between items-start">
+                        <div><p class="text-slate-500 text-sm font-semibold uppercase">Lock Status</p><h2 class="text-2xl font-bold text-emerald-600 mt-2" id="lock-status">Locked</h2></div>
+                        <div class="bg-emerald-50 p-3 rounded-full text-emerald-500" id="lock-icon-bg"><i class="fa-solid fa-lock text-2xl" id="lock-icon"></i></div>
+                    </div>
+                    <p class="text-sm text-slate-400 mt-4">Servo Motor State</p>
+                </div>
+                <div class="card bg-white rounded-xl shadow-sm p-6 border-l-4 border-slate-300" id="door-card">
+                    <div class="flex justify-between items-start">
+                        <div><p class="text-slate-500 text-sm font-semibold uppercase">Door Sensor</p><h2 class="text-2xl font-bold text-slate-700 mt-2" id="door-status">Closed</h2></div>
+                        <div class="bg-slate-100 p-3 rounded-full text-slate-500" id="door-icon-bg"><i class="fa-solid fa-door-closed text-2xl" id="door-icon"></i></div>
+                    </div>
+                    <p class="text-sm text-slate-400 mt-4">Physical State</p>
+                </div>
+                <div class="card bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
+                    <div class="flex justify-between items-start">
+                        <div><p class="text-slate-500 text-sm font-semibold uppercase">Environment</p><div class="flex gap-4 mt-2"><div><span class="text-2xl font-bold text-slate-800" id="temp-val">--</span><span class="text-sm text-slate-500">°C</span></div><div class="border-l border-slate-200 pl-4"><span class="text-2xl font-bold text-slate-800" id="humid-val">--</span><span class="text-sm text-slate-500">%</span></div></div></div>
+                        <div class="bg-purple-50 p-3 rounded-full text-purple-500"><i class="fa-solid fa-temperature-half text-2xl"></i></div>
+                    </div>
+                    <p class="text-sm text-slate-400 mt-4">Interior Conditions</p>
+                </div>
+            </div>
+
+            <!-- LOGS & CONTROLS -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+                    <div class="flex justify-between items-center mb-6"><h3 class="text-lg font-bold text-slate-800">Live Activity Log</h3><button onclick="clearLogsManual()" class="text-xs text-slate-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-trash mr-1"></i> Clear Logs</button></div>
+                    <div class="log-container h-80 overflow-y-auto pr-2 space-y-3" id="logs-list"><div class="text-center text-slate-400 py-10">No logs available</div></div>
+                </div>
+                <div class="space-y-6">
+                    <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-indigo-500">
+                        <h3 class="text-lg font-bold text-slate-800 mb-4">Remote Control</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="remoteControl('Unlock')" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded transition-colors flex flex-col items-center justify-center gap-1"><i class="fa-solid fa-lock-open text-xl"></i><span>UNLOCK</span></button>
+                            <button onclick="remoteControl('Lock')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded transition-colors flex flex-col items-center justify-center gap-1"><i class="fa-solid fa-lock text-xl"></i><span>LOCK</span></button>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-3 text-center">Commands sent via Firebase Realtime DB</p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-lg font-bold text-slate-800 mb-4">System Health</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center"><span class="text-slate-600"><i class="fa-solid fa-microchip mr-2"></i> ESP32 Status</span><span class="text-green-500 font-medium" id="esp-status">Active</span></div>
+                            <div class="flex justify-between items-center"><span class="text-slate-600"><i class="fa-solid fa-wifi mr-2"></i> Connectivity</span><span class="text-green-500 font-medium" id="conn-status">Excellent</span></div>
+                            <div class="flex justify-between items-center"><span class="text-slate-600"><i class="fa-solid fa-database mr-2"></i> Database</span><span class="text-gray-400 font-medium" id="db-status">Connecting...</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK & Application Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getDatabase, ref, onValue, query, limitToLast, remove, set } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
+        import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+        // === CONFIGURATION ===
+        const firebaseConfig = { 
+            apiKey: "AIzaSyDCf1MiexBrF9hViJDh4nhiEQBhRUqPAkk", 
+            authDomain: "test-2-ee62f.firebaseapp.com", 
+            databaseURL: "https://test-2-ee62f-default-rtdb.asia-southeast1.firebasedatabase.app", 
+            projectId: "test-2-ee62f", 
+            storageBucket: "test-2-ee62f.firebasestorage.app", 
+            messagingSenderId: "851643285604", 
+            appId: "1:851643285604:web:1f0cd02dd5c83d7e425f71", 
+            measurementId: "G-CKGJPKP9VF" 
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        // === VIEW MANAGEMENT ===
+        const loginView = document.getElementById('login-view');
+        const dashboardView = document.getElementById('dashboard-view');
+        const mainBody = document.body;
+
+        function toggleView(isLoggedIn) {
+            if (isLoggedIn) {
+                loginView.classList.add('hidden');
+                dashboardView.classList.remove('hidden');
+                dashboardView.classList.add('flex');
+                mainBody.classList.remove('bg-slate-900'); 
+                mainBody.classList.add('bg-[#f3f4f6]');
+            } else {
+                loginView.classList.remove('hidden');
+                dashboardView.classList.add('hidden');
+                dashboardView.classList.remove('flex');
+                mainBody.classList.add('bg-slate-900');
+                mainBody.classList.remove('bg-[#f3f4f6]');
+            }
+        }
+
+        // === AUTHENTICATION LOGIC ===
+        // 1. Check Login State
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("User logged in:", user.email);
+                toggleView(true);
+            } else {
+                console.log("User logged out");
+                toggleView(false);
+            }
+        });
+
+        // 2. Handle Login Form Submission
+        const loginForm = document.getElementById('login-form');
+        const emailInput = document.getElementById('email');
+        const passInput = document.getElementById('password');
+        const errorMsg = document.getElementById('error-msg');
+        const errorText = document.getElementById('error-text');
+        const submitBtn = document.getElementById('submit-btn');
+
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passInput.value;
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Signing in...';
+            errorMsg.classList.add('hidden');
+
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    // Success - onAuthStateChanged will handle the redirect
+                    submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Success!';
+                    submitBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                    submitBtn.classList.add('bg-green-500');
+                })
+                .catch((error) => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<span>Sign In</span><i class="fa-solid fa-arrow-right"></i>';
+                    submitBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                    submitBtn.classList.remove('bg-green-500');
+                    
+                    errorMsg.classList.remove('hidden');
+                    if(error.code === "auth/invalid-email") errorText.innerText = "Invalid email address.";
+                    else if(error.code === "auth/user-not-found") errorText.innerText = "User not found.";
+                    else if(error.code === "auth/wrong-password") errorText.innerText = "Incorrect password.";
+                    else errorText.innerText = "Login failed (" + error.code + ")";
+                    
+                    // Shake animation
+                    const card = document.querySelector('#login-view > div');
+                    card.classList.add('shake');
+                    setTimeout(() => card.classList.remove('shake'), 500);
+                });
+        });
+
+        // 3. Handle Logout
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            signOut(auth).then(() => {
+                // Reset button state for next login
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>Sign In</span><i class="fa-solid fa-arrow-right"></i>';
+                submitBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                submitBtn.classList.remove('bg-green-500');
+                emailInput.value = "";
+                passInput.value = "";
+            });
+        });
+
+        // === DASHBOARD LOGIC (Runs only when needed, but listeners can stay attached) ===
+        
+        window.remoteControl = function(cmd) { set(ref(db, '/remoteUnlock'), cmd === 'Unlock' ? "1" : "0"); }
+        
+        const mailCountEl = document.getElementById('mail-count'), logsList = document.getElementById('logs-list'), securityAlert = document.getElementById('security-alert'), securityMsg = document.getElementById('security-msg'), espStatusEl = document.getElementById('esp-status'), dbStatusEl = document.getElementById('db-status'), connStatusEl = document.getElementById('conn-status'), connDot = document.getElementById('connection-dot'), connText = document.getElementById('connection-text');
+        let lastUpdate = Date.now();
+
+        function getTimeFromId(id) {
+            try { const PUSH_CHARS = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"; let time = 0; for (let i = 0; i < 8; i++) { time = time * 64 + PUSH_CHARS.indexOf(id.charAt(i)); } return new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); } catch (e) { return "Just now"; }
+        }
+
+        function updateConnectivity() { if (navigator.onLine) { connStatusEl.innerText = "Excellent"; connStatusEl.className = "text-green-500 font-medium"; } else { connStatusEl.innerText = "Offline"; connStatusEl.className = "text-red-500 font-medium"; } }
+        window.addEventListener('online', updateConnectivity); window.addEventListener('offline', updateConnectivity); updateConnectivity();
+
+        function updateHeartbeat() { lastUpdate = Date.now(); espStatusEl.innerText = "Active"; espStatusEl.className = "text-green-500 font-medium"; connDot.className = "fa-solid fa-circle text-green-500 text-xs mr-1"; connText.innerText = "System Online"; }
+        setInterval(() => { if (Date.now() - lastUpdate > 120000) { espStatusEl.innerText = "Offline?"; espStatusEl.className = "text-gray-400 font-medium"; connDot.className = "fa-solid fa-circle text-gray-400 text-xs mr-1"; connText.innerText = "Connection Lost"; } }, 30000);
+
+        onValue(ref(db, ".info/connected"), (snap) => { if (snap.val() === true) { dbStatusEl.innerText = "Connected"; dbStatusEl.className = "text-green-500 font-medium"; } else { dbStatusEl.innerText = "Disconnected"; dbStatusEl.className = "text-red-500 font-medium"; } });
+        onValue(ref(db, '/mailCount'), (snap) => { updateHeartbeat(); const c = snap.val() || 0; mailCountEl.innerText = c; if (c === 0) { set(ref(db, '/logs'), null); logsList.innerHTML = '<div class="text-center text-slate-400 py-10">Logs Cleared (Mail Collected)</div>'; } });
+        onValue(ref(db, '/mailStatus'), (snap) => document.getElementById('mail-status-text').innerText = snap.val() || "No status");
+        onValue(ref(db, '/lockStatus'), (snap) => { updateHeartbeat(); const s = snap.val(), el = document.getElementById('lock-status'), card = document.getElementById('lock-card'), icon = document.getElementById('lock-icon'), bg = document.getElementById('lock-icon-bg'); if (s === "Unlocked") { el.innerText = "Unlocked"; el.className = "text-2xl font-bold text-amber-600 mt-2"; card.className = "card bg-white rounded-xl shadow-sm p-6 border-l-4 border-amber-500"; icon.className = "fa-solid fa-lock-open text-2xl"; bg.className = "bg-amber-50 p-3 rounded-full text-amber-500"; } else { el.innerText = "Locked"; el.className = "text-2xl font-bold text-emerald-600 mt-2"; card.className = "card bg-white rounded-xl shadow-sm p-6 border-l-4 border-emerald-500"; icon.className = "fa-solid fa-lock text-2xl"; bg.className = "bg-emerald-50 p-3 rounded-full text-emerald-500"; } });
+        onValue(ref(db, '/physicalDoor'), (snap) => { updateHeartbeat(); const s = snap.val(), el = document.getElementById('door-status'), card = document.getElementById('door-card'), icon = document.getElementById('door-icon'); if (s && s.includes("FORCED")) { el.innerText = "Forced Open!"; el.className = "text-2xl font-bold text-red-600 mt-2"; card.classList.add("alert-active", "border-red-500"); icon.className = "fa-solid fa-triangle-exclamation text-2xl"; } else if (s === "Open") { el.innerText = "Open"; el.className = "text-2xl font-bold text-amber-600 mt-2"; card.classList.remove("alert-active", "border-red-500", "border-slate-300"); card.classList.add("border-amber-500"); icon.className = "fa-solid fa-door-open text-2xl"; } else { el.innerText = "Closed"; el.className = "text-2xl font-bold text-slate-700 mt-2"; card.classList.remove("alert-active", "border-red-500", "border-amber-500"); card.classList.add("border-slate-300"); icon.className = "fa-solid fa-door-closed text-2xl"; } });
+        onValue(ref(db, '/temperature'), (snap) => { updateHeartbeat(); document.getElementById('temp-val').innerText = snap.val() ? parseFloat(snap.val()).toFixed(1) : "--"; });
+        onValue(ref(db, '/humidity'), (snap) => { document.getElementById('humid-val').innerText = snap.val() ? parseFloat(snap.val()).toFixed(1) : "--"; });
+        onValue(ref(db, '/security'), (snap) => { const m = snap.val(); if (m && (m.includes("Motion") || m.includes("Intruder") || m.includes("detected") || m.includes("Forced"))) { securityAlert.classList.remove("hidden"); securityMsg.innerText = m; setTimeout(() => securityAlert.classList.add("hidden"), 10000); } });
+        onValue(query(ref(db, '/logs'), limitToLast(20)), (snap) => { logsList.innerHTML = ""; const data = snap.val(); if (!data) { logsList.innerHTML = '<div class="text-center text-slate-400 py-10">No recent activity</div>'; return; } Object.entries(data).reverse().forEach(([key, msg]) => { const time = getTimeFromId(key); let i = "fa-circle-info", c = "text-blue-500", b = "bg-blue-50"; if (msg.includes("Mail")) { i = "fa-envelope"; c = "text-indigo-500"; b = "bg-indigo-50"; } else if (msg.includes("Unlock")) { i = "fa-lock-open"; c = "text-amber-500"; b = "bg-amber-50"; } else if (msg.includes("Lock")) { i = "fa-lock"; c = "text-emerald-500"; b = "bg-emerald-50"; } else if (msg.includes("Alert") || msg.includes("Security") || msg.includes("Forced")) { i = "fa-bell"; c = "text-red-500"; b = "bg-red-50"; } else if (msg.includes("Remote")) { i = "fa-globe"; c = "text-purple-500"; b = "bg-purple-50"; } logsList.innerHTML += `<div class="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-lg transition-colors border-b border-slate-100 last:border-0"><div class="${b} ${c} p-2 rounded-lg shrink-0"><i class="fa-solid ${i} text-sm"></i></div><div class="flex-1"><p class="text-sm font-medium text-slate-700">${msg}</p><p class="text-xs text-slate-400">${time}</p></div></div>`; }); });
+        window.clearLogsManual = function() { set(ref(db, '/logs'), null); }
+        window.dismissAlert = function() { securityAlert.classList.add("hidden"); }
+    </script>
+</body>
+</html>
