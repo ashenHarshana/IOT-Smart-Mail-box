@@ -4,7 +4,7 @@
 #include <MFRC522.h>
 #include <ESP32Servo.h>
 
-// WiFi configaration
+
 #define WIFI_SSID "OPPO A78"
 #define WIFI_PASSWORD "12345678"
 
@@ -13,7 +13,6 @@
 #define USER_EMAIL "ashenharshana02@gmail.com"
 #define USER_PASSWORD "Ashen@fdo10"
 
-// Pins
 #define DOOR_SENSOR_PIN 4
 
 FirebaseData fbdo;
@@ -23,21 +22,20 @@ FirebaseConfig config;
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 Servo myServo;
 
-// State Variables
+
 int lastDoorState = -1;
 bool doorUnlocked = false;
 bool mailRetrievalDetected = false;
 
-// Timers
+
 unsigned long lastRemoteCheck = 0; 
 
 void setup() {
   Serial.begin(115200);
+  
+  pinMode(DOOR_SENSOR_PIN, INPUT_PULLUP);
+  myServo.attach(servo_pin);
 
-  SPI.begin();
-  rfid.PCD_Init();
-  myServo.attach(SERVO_PIN);
-  myServo.write(0); 
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
@@ -59,36 +57,51 @@ void setup() {
   Firebase.setDoubleDigits(5);
    Serial.println("Firebase Connected!");
 
-// Sync initial state
 
   Serial.println("System Active.");
 
 }
 
 void loop() {
-  // 4. RFID ACCESS (With 3s Cooldown)
-  if (millis() - lastRFIDScan > 3000) { 
-    if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-      byte *uid = rfid.uid.uidByte;
-      String uidString = "";
-      for (byte i = 0; i < rfid.uid.size; i++) {
-        if (uid[i] < 0x10) uidString += "0";
-        uidString += String(uid[i], HEX);
-        if (i < rfid.uid.size - 1) uidString += " ";
+  
+  if (millis() - lastRemoteCheck > 2000) {
+    
+    if (Firebase.ready()) {
+      if (Firebase.getString(fbdo, "/remoteUnlock")) {
+        String cmd = fbdo.stringData();
+        
+        
+        
+        if (cmd == "1" && !doorUnlocked) {
+          unlockDoor("Remote App");
+        } 
+        else if (cmd == "0" && doorUnlocked) {
+          lockDoor("Remote App");
+        }
       }
-      uidString.toUpperCase();
-      
-      if (compareUID(uid, validCard1) || compareUID(uid, validCard2)) {
-        if (!doorUnlocked) unlockDoor("RFID");
-        else lockDoor("RFID");
-        lastRFIDScan = millis(); 
-      } else {
-        Serial.println("Access Denied");
-        Firebase.pushString(fbdo, "/logs", "Denied: " + uidString);
-        lastRFIDScan = millis();
-      }
-      rfid.PICC_HaltA();
-      rfid.PCD_StopCrypto1();
     }
+    lastRemoteCheck = millis();
+  }
+
+ 
+  int currentDoorState = digitalRead(DOOR_SENSOR_PIN);
+  if (currentDoorState != lastDoorState) {
+    if (currentDoorState == HIGH) { 
+      if (doorUnlocked) {
+        Serial.println("Door Opened (Authorized)");
+        Firebase.setString(fbdo, "/physicalDoor", "Open");
+        mailRetrievalDetected = true;
+      } else {
+        Serial.println("ALARM: DOOR FORCED OPEN!");
+        Firebase.setString(fbdo, "/physicalDoor", "FORCED OPEN");
+        Firebase.setString(fbdo, "/security", "Door Forced Open!");
+        Firebase.pushString(fbdo, "/logs", "ALARM: Door Forced!");
+      }
+    } else {
+      Serial.println("Door Closed");
+      Firebase.setString(fbdo, "/physicalDoor", "Closed");
+    }
+    lastDoorState = currentDoorState;
+    delay(100);
   }
 }
